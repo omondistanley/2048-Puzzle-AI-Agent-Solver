@@ -269,43 +269,88 @@ def play_sound(event, tile_val=None):
 # Keyboard + swipe injection
 # ─────────────────────────────────────────────────────────────────────────────
 def inject_controls(wasd=True):
+    """
+    Injects keyboard and swipe listeners.
+
+    Keyboard: attached to window.parent.document (works fine — same origin for kb events).
+    Swipe: attached to the iframe's OWN document via a transparent full-screen overlay div.
+           This avoids the cross-origin block that prevents window.parent.document
+           touch listeners from firing on Streamlit Cloud mobile.
+    """
     wasd_map = """'KeyW':0,'KeyS':1,'KeyA':2,'KeyD':3,""" if wasd else ""
     st.components.v1.html(f"""
+    <style>
+      html, body {{ margin:0; padding:0; background:transparent; overflow:hidden; }}
+      #swipe-layer {{
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        z-index: 0;
+        /* transparent — does not block taps on Streamlit elements above */
+        background: transparent;
+        touch-action: none;
+      }}
+    </style>
+    <div id="swipe-layer"></div>
     <script>
     (function() {{
         const keyMap = {{{wasd_map}'ArrowUp':0,'ArrowDown':1,'ArrowLeft':2,'ArrowRight':3}};
+
         function sendMove(dir) {{
-            var url = new URL(window.parent.location.href);
-            url.searchParams.set('move', dir);
-            window.parent.history.replaceState(null,'',url.toString());
-            window.parent.dispatchEvent(new PopStateEvent('popstate'));
+            try {{
+                var url = new URL(window.parent.location.href);
+                url.searchParams.set('move', dir);
+                window.parent.history.replaceState(null, '', url.toString());
+                window.parent.dispatchEvent(new PopStateEvent('popstate'));
+            }} catch(e) {{
+                /* cross-origin fallback: post a message instead */
+                window.parent.postMessage({{type:'2048move', dir: dir}}, '*');
+            }}
         }}
-        if (!window._2048kbBound) {{
-            window._2048kbBound = true;
-            window.parent.document.addEventListener('keydown', function(e) {{
-                if (e.key in keyMap || e.code in keyMap) {{
-                    e.preventDefault();
-                    sendMove(keyMap[e.key] ?? keyMap[e.code]);
-                }}
-            }});
-        }}
-        if (!window._2048touchBound) {{
-            window._2048touchBound = true;
-            let tx=null,ty=null;
-            window.parent.document.addEventListener('touchstart',function(e){{
-                tx=e.touches[0].clientX; ty=e.touches[0].clientY;
-            }},{{passive:true}});
-            window.parent.document.addEventListener('touchend',function(e){{
-                if(tx===null) return;
-                const dx=e.changedTouches[0].clientX-tx;
-                const dy=e.changedTouches[0].clientY-ty;
-                if(Math.max(Math.abs(dx),Math.abs(dy))<30){{tx=ty=null;return;}}
-                sendMove(Math.abs(dx)>Math.abs(dy)?(dx>0?3:2):(dy>0?1:0));
-                tx=ty=null;
-            }},{{passive:true}});
-        }}
+
+        /* ── Keyboard (parent document — works cross-origin for kb) ── */
+        try {{
+            if (!window.parent._2048kbBound) {{
+                window.parent._2048kbBound = true;
+                window.parent.document.addEventListener('keydown', function(e) {{
+                    var d = keyMap[e.key] ?? keyMap[e.code];
+                    if (d !== undefined) {{ e.preventDefault(); sendMove(d); }}
+                }});
+            }}
+        }} catch(e) {{}}
+
+        /* ── Touch / swipe — on THIS iframe's own document ── */
+        /* The overlay div covers the whole viewport inside the iframe, */
+        /* so all finger movements are captured here regardless of CORS. */
+        var layer = document.getElementById('swipe-layer');
+        var tx = null, ty = null, tt = null;
+
+        layer.addEventListener('touchstart', function(e) {{
+            var t = e.touches[0];
+            tx = t.clientX; ty = t.clientY; tt = Date.now();
+        }}, {{passive: true}});
+
+        layer.addEventListener('touchend', function(e) {{
+            if (tx === null) return;
+            var t  = e.changedTouches[0];
+            var dx = t.clientX - tx;
+            var dy = t.clientY - ty;
+            var dt = Date.now() - tt;
+            var dist = Math.max(Math.abs(dx), Math.abs(dy));
+            /* require 40px swipe in under 500ms */
+            if (dist >= 40 && dt < 500) {{
+                sendMove(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 3 : 2) : (dy > 0 ? 1 : 0));
+            }}
+            tx = ty = tt = null;
+        }}, {{passive: true}});
+
+        /* also handle touchmove to prevent page scroll during swipe */
+        layer.addEventListener('touchmove', function(e) {{
+            e.preventDefault();
+        }}, {{passive: false}});
     }})();
-    </script>""", height=0)
+    </script>""", height=60)
+    # height=60 gives the iframe just enough body to receive touch events;
+    # the overlay is position:fixed so it covers the full viewport regardless.
 
 def read_swipe_move():
     raw = st.query_params.get("move")
