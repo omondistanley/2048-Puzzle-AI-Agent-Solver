@@ -1,0 +1,75 @@
+/* Board-specific tokens keep tile chrome readable in both themes. */
+:root {
+  --board-bg: #bbada0;
+  --board-cell-bg: rgba(238, 228, 218, 0.35);
+  --ghost-opacity: 0.45;
+}
+
+:root[data-theme="dark"] {
+  --board-bg: #3a4658;
+  --board-cell-bg: rgba(255, 255, 255, 0.08);
+  --ghost-opacity: 0.6;
+}
+
+@keyframes tile-appear {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes tile-merge {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.board-container {
+  background: var(--board-bg);
+  border-radius: 8px;
+  padding: 8px;
+  position: relative;
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.board-grid {
+  position: relative;
+}
+
+.board-cell {
+  background: var(--board-cell-bg);
+  border-radius: 4px;
+  position: absolute;
+}
+
+.tile {
+  position: absolute;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  transition: left 80ms ease-in-out, top 80ms ease-in-out;
+  will-change: left, top;
+  z-index: 10;
+}
+
+.tile.is-new {
+  animation: tile-appear 150ms ease forwards;
+}
+
+.tile.is-merged {
+  animation: tile-merge 150ms ease forwards;
+  z-index: 20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile { transition: none; animation: none; }
+}
+
+.ghost-board {
+  opacity: var(--ghost-opacity);
+  pointer-events: none;
+}

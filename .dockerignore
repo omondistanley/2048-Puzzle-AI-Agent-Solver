@@ -1,0 +1,28 @@
+# VCS
+.git
+.gitignore
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Local runtime outputs
+output.txt
+output1.txt
+output2.txt
+
+# Env/editor noise
+.env
+.venv/
+venv/
+.DS_Store
+.vscode/
+
+# Frontend local artifacts (recreated in image)
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

@@ -1,0 +1,50 @@
+:root {
+  --app-max-width: 520px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-sm: 6px;
+  --color-text-muted: #bbb;
+  --timer-ok: #27ae60;
+  --timer-warn: #f39c12;
+  --timer-urgent: #e74c3c;
+}
+
+.app-shell {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-3);
+  font-family: 'Clear Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
+.time-attack {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: var(--space-2);
+}
+
+.time-attack.ok { color: var(--timer-ok); }
+.time-attack.warn { color: var(--timer-warn); }
+.time-attack.urgent { color: var(--timer-urgent); }
+
+.human-controls-row {
+  margin-top: 14px;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.keyboard-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 10px;
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    padding: var(--space-3) var(--space-2);
+  }
+}

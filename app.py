@@ -267,75 +267,99 @@ def play_sound(event, tile_val=None):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Keyboard + swipe injection
+# Uses st.components.v1.html() so scripts actually execute.
+# Listeners attach to window.parent.document (same-origin on Streamlit Cloud).
+# Swipe direction is returned via Streamlit.setComponentValue() → Python.
 # ─────────────────────────────────────────────────────────────────────────────
 def inject_controls(wasd=True):
     """
-    Injects keyboard + swipe listeners directly into the main page via
-    st.markdown(unsafe_allow_html=True) — no iframe, so touch events work
-    on mobile (including Streamlit Cloud) without any cross-origin issues.
-    Swipe is the default input for both mobile and desktop.
+    Renders a 0-height component iframe that:
+    - attaches touchstart/touchend + mousedown/mouseup + keydown to
+      window.parent.document (same-origin, works on Streamlit Cloud)
+    - calls Streamlit.setComponentValue(dir) to pass the detected direction
+      back to Python as the component's return value.
+    Returns the detected direction (0-3) or None.
     """
     wasd_map = "'KeyW':0,'KeyS':1,'KeyA':2,'KeyD':3," if wasd else ""
-    st.markdown(f"""
+    html = f"""
+    <script src="https://unpkg.com/streamlit-component-lib@2.0.0/dist/streamlit-component-lib.js"></script>
     <script>
     (function() {{
-        if (window._2048controlsBound) return;
-        window._2048controlsBound = true;
+        // Wait for Streamlit to be ready, then bind controls
+        function init() {{
+            var doc = window.parent.document;
+            if (!doc) return;
 
-        var keyMap = {{{wasd_map}'ArrowUp':0,'ArrowDown':1,'ArrowLeft':2,'ArrowRight':3}};
+            // Only bind once per page load
+            if (doc._2048controlsBound) return;
+            doc._2048controlsBound = true;
 
-        function sendMove(dir) {{
-            var url = new URL(window.location.href);
-            url.searchParams.set('move', String(dir));
-            window.history.replaceState(null, '', url.toString());
-            window.dispatchEvent(new PopStateEvent('popstate'));
+            var keyMap = {{{wasd_map}'ArrowUp':0,'ArrowDown':1,'ArrowLeft':2,'ArrowRight':3}};
+
+            function sendMove(dir) {{
+                Streamlit.setComponentValue(dir);
+            }}
+
+            /* ── Keyboard ── */
+            doc.addEventListener('keydown', function(e) {{
+                var d = keyMap[e.key] !== undefined ? keyMap[e.key] : keyMap[e.code];
+                if (d !== undefined) {{ e.preventDefault(); sendMove(d); }}
+            }});
+
+            /* ── Touch swipe ── */
+            var tx=null, ty=null, tt=null;
+
+            doc.addEventListener('touchstart', function(e) {{
+                var t = e.touches[0];
+                tx = t.clientX; ty = t.clientY; tt = Date.now();
+            }}, {{passive:true}});
+
+            doc.addEventListener('touchmove', function(e) {{
+                if (tx !== null) e.preventDefault();
+            }}, {{passive:false}});
+
+            doc.addEventListener('touchend', function(e) {{
+                if (tx === null) return;
+                var t = e.changedTouches[0];
+                var dx = t.clientX - tx, dy = t.clientY - ty;
+                if (Math.max(Math.abs(dx), Math.abs(dy)) >= 40 && Date.now()-tt < 600)
+                    sendMove(Math.abs(dx) > Math.abs(dy) ? (dx>0?3:2) : (dy>0?1:0));
+                tx = ty = tt = null;
+            }}, {{passive:true}});
+
+            /* ── Mouse drag (desktop swipe) ── */
+            var mx=null, my=null, mt=null;
+            doc.addEventListener('mousedown', function(e) {{
+                mx = e.clientX; my = e.clientY; mt = Date.now();
+            }});
+            doc.addEventListener('mouseup', function(e) {{
+                if (mx === null) return;
+                var dx = e.clientX - mx, dy = e.clientY - my;
+                if (Math.max(Math.abs(dx), Math.abs(dy)) >= 60 && Date.now()-mt < 600)
+                    sendMove(Math.abs(dx) > Math.abs(dy) ? (dx>0?3:2) : (dy>0?1:0));
+                mx = my = mt = null;
+            }});
+
+            Streamlit.setFrameHeight(0);
         }}
 
-        /* ── Keyboard ── */
-        document.addEventListener('keydown', function(e) {{
-            var d = keyMap[e.key] !== undefined ? keyMap[e.key] : keyMap[e.code];
-            if (d !== undefined) {{ e.preventDefault(); sendMove(d); }}
-        }});
-
-        /* ── Swipe (touch + mouse drag) — fires on the whole page ── */
-        var tx=null, ty=null, tt=null, mouseDown=false;
-
-        /* Touch */
-        document.addEventListener('touchstart', function(e) {{
-            var t = e.touches[0];
-            tx = t.clientX; ty = t.clientY; tt = Date.now();
-        }}, {{passive:true}});
-
-        document.addEventListener('touchmove', function(e) {{
-            /* prevent page scroll while swiping */
-            if (tx !== null) e.preventDefault();
-        }}, {{passive:false}});
-
-        document.addEventListener('touchend', function(e) {{
-            if (tx === null) return;
-            var t = e.changedTouches[0];
-            var dx = t.clientX - tx, dy = t.clientY - ty;
-            if (Math.max(Math.abs(dx), Math.abs(dy)) >= 40 && Date.now()-tt < 600)
-                sendMove(Math.abs(dx) > Math.abs(dy) ? (dx>0?3:2) : (dy>0?1:0));
-            tx = ty = tt = null;
-        }}, {{passive:true}});
-
-        /* Mouse drag (desktop swipe) */
-        document.addEventListener('mousedown', function(e) {{
-            tx = e.clientX; ty = e.clientY; tt = Date.now(); mouseDown = true;
-        }});
-        document.addEventListener('mouseup', function(e) {{
-            if (!mouseDown || tx === null) return;
-            var dx = e.clientX - tx, dy = e.clientY - ty;
-            if (Math.max(Math.abs(dx), Math.abs(dy)) >= 60 && Date.now()-tt < 600)
-                sendMove(Math.abs(dx) > Math.abs(dy) ? (dx>0?3:2) : (dy>0?1:0));
-            tx = ty = tt = null; mouseDown = false;
-        }});
+        // Streamlit.setComponentValue requires the component framework to load first
+        if (window.Streamlit) {{
+            init();
+        }} else {{
+            window.addEventListener('load', function() {{
+                // Give Streamlit component lib a moment to initialise
+                setTimeout(init, 200);
+            }});
+        }}
     }})();
     </script>
-    """, unsafe_allow_html=True)
+    """
+    return st.components.v1.html(html, height=0)
+
 
 def read_swipe_move():
+    """Read direction returned by inject_controls component, or fall back to query param."""
     raw = st.query_params.get("move")
     if raw is not None:
         try:
@@ -974,9 +998,20 @@ st.session_state.last_sound = None
 # Human controls (shared function)
 # ─────────────────────────────────────────────────────────────────────────────
 def human_controls(key_prefix="h", show_hint_btn=False, show_takeover_btn=False):
-    inject_controls(wasd=wasd_keys if 'wasd_keys' in dir() else True)
+    # inject_controls returns the swipe/keyboard direction via setComponentValue
+    ctrl_move = inject_controls(wasd=wasd_keys if 'wasd_keys' in dir() else True)
 
-    # Swipe / keyboard move
+    # Primary: component return value (swipe / keyboard via iframe → parent)
+    if ctrl_move is not None and not st.session_state.game_over:
+        try:
+            d = int(ctrl_move)
+            if 0 <= d <= 3:
+                execute_move(d, "Human")
+                st.rerun()
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback: query-param move (kept for backwards compat / direct URL testing)
     qp_move = read_swipe_move()
     if qp_move is not None and not st.session_state.game_over:
         execute_move(qp_move, "Human")
