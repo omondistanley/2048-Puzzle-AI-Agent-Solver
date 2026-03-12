@@ -1,23 +1,24 @@
 import React, { useState } from "react";
-import type { ReplayRecord, GameGrid } from "../../types";
+import type { ReplayRecord, GameGrid, TileSkin } from "../../types";
 import { getTileColors } from "../../utils/tileColors";
 
 interface Props {
   replays: ReplayRecord[];
   colorblind: boolean;
+  tileSkin?: TileSkin;
 }
 
 const MICRO_CELL = 32;
 const MICRO_GAP = 3;
 
-const MiniBoard: React.FC<{ grid: GameGrid; colorblind: boolean }> = ({ grid, colorblind }) => {
+const MiniBoard: React.FC<{ grid: GameGrid; colorblind: boolean; tileSkin: TileSkin }> = ({ grid, colorblind, tileSkin }) => {
   const _size = grid.length; void _size;
   return (
     <div style={{ background: "var(--board-bg)", padding: MICRO_GAP, borderRadius: 5, display: "inline-block", border: "1px solid var(--border)" }}>
       {grid.map((row, r) => (
         <div key={r} style={{ display: "flex", gap: MICRO_GAP, marginBottom: MICRO_GAP }}>
           {row.map((val, c) => {
-            const [bg, fg] = getTileColors(val, colorblind);
+            const [bg, fg] = getTileColors(val, colorblind, tileSkin);
             return (
               <div key={c} style={{
                 width: MICRO_CELL, height: MICRO_CELL, background: val ? bg : "rgba(238,228,218,0.35)",
@@ -34,7 +35,7 @@ const MiniBoard: React.FC<{ grid: GameGrid; colorblind: boolean }> = ({ grid, co
   );
 };
 
-export const ReplayPanel: React.FC<Props> = ({ replays, colorblind }) => {
+export const ReplayPanel: React.FC<Props> = ({ replays, colorblind, tileSkin = "classic" }) => {
   const [sel, setSel] = useState<number | null>(null);
   const [step, setStep] = useState(0);
   const [autoplay, setAutoplay] = useState(false);
@@ -79,7 +80,7 @@ export const ReplayPanel: React.FC<Props> = ({ replays, colorblind }) => {
                 <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
                   Step {step + 1}/{replay.snapshots.length}
                 </div>
-                <MiniBoard grid={replay.snapshots[step]} colorblind={colorblind} />
+                <MiniBoard grid={replay.snapshots[step]} colorblind={colorblind} tileSkin={tileSkin} />
 
                 <input
                   type="range"
@@ -132,6 +133,6 @@ export const ReplayPanel: React.FC<Props> = ({ replays, colorblind }) => {
 
 const navBtn: React.CSSProperties = {
   padding: "6px 14px", borderRadius: 5, border: "none",
-  background: "#8f7a66", color: "#fff", cursor: "pointer", fontWeight: 700,
+  background: "var(--btn-primary-bg)", color: "#fff", cursor: "pointer", fontWeight: 700,
   boxShadow: "0 1px 0 rgba(0,0,0,0.18)",
 };

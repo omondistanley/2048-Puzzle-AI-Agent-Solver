@@ -10,16 +10,8 @@ export const UndoButton: React.FC = () => {
     <button
       onClick={() => dispatch({ type: "UNDO" })}
       disabled={!canUndo}
-      style={{
-        padding: "8px 16px",
-        borderRadius: 6,
-        border: "none",
-        background: canUndo ? "#8f7a66" : "#ccc",
-        color: "#fff",
-        fontWeight: 700,
-        fontSize: 14,
-        cursor: canUndo ? "pointer" : "not-allowed",
-      }}
+      className="btn btn-primary"
+      style={{ minWidth: 108 }}
     >
       ↩ Undo {state.undoBudget > 0 ? `(${remaining})` : ""}
     </button>

@@ -6,6 +6,58 @@ import { api } from "../../api/endpoints";
 import { localHeuristicScores } from "../../engine/localEngine";
 import type { WSMessage } from "../../types";
 
+/**
+ * Softmax confidence: converts raw heuristic scores into probabilities.
+ * Uses temperature scaling so close scores don't all collapse to ~25%.
+ * Only valid (finite) directions are included; invalid ones get 0%.
+ */
+function softmaxConfidence(scores: Record<string, number>): Record<string, number> {
+  const valid = Object.entries(scores).filter(([, v]) => isFinite(v) && v > -Infinity);
+  if (valid.length === 0) return { up: 0, down: 0, left: 0, right: 0 };
+
+  // Temperature: lower = more decisive, higher = more uniform. 0.5 gives good spread.
+  const T = 0.5;
+  const shifted = valid.map(([k, v]) => [k, v] as [string, number]);
+  const maxVal = Math.max(...shifted.map(([, v]) => v));
+  const exps = shifted.map(([k, v]) => [k, Math.exp((v - maxVal) / T)] as [string, number]);
+  const sum = exps.reduce((s, [, e]) => s + e, 0);
+
+  const result: Record<string, number> = { up: 0, down: 0, left: 0, right: 0 };
+  exps.forEach(([k, e]) => { result[k] = Math.round((e / sum) * 100); });
+  return result;
+}
+
+const DIR_ARROWS: Record<string, string> = { up: "⬆", down: "⬇", left: "⬅", right: "➡" };
+const DIR_LABELS: Record<string, string> = { up: "Up", down: "Down", left: "Left", right: "Right" };
+
+/** Template-based explanation for why a direction scores well or poorly. */
+function buildExplanation(
+  dir: string,
+  score: number,
+  confidence: number,
+  isBest: boolean,
+  isInvalid: boolean,
+  allScores: Record<string, number>,
+): string {
+  if (isInvalid) return "This move is blocked — no tiles can slide in this direction.";
+
+  const validScores = Object.values(allScores).filter(v => isFinite(v) && v > -Infinity);
+  const maxScore = Math.max(...validScores);
+  const minScore = Math.min(...validScores);
+  const range = maxScore - minScore;
+  const relPos = range > 0 ? (score - minScore) / range : 1;
+
+  if (isBest) {
+    if (confidence >= 70) return `Strong choice. Moving ${DIR_LABELS[dir]} scores ${score.toFixed(1)}, significantly better than all alternatives. The AI is ${confidence}% confident this is optimal.`;
+    if (confidence >= 50) return `Best available move. Moving ${DIR_LABELS[dir]} (score ${score.toFixed(1)}) edges out the alternatives. ${confidence}% confidence — a few directions are competitive.`;
+    return `Slight edge. Moving ${DIR_LABELS[dir]} scores ${score.toFixed(1)}, marginally better than other options. At ${confidence}% confidence, the board is fairly balanced — any of the top moves could work.`;
+  }
+
+  if (relPos < 0.25) return `Weak move. Moving ${DIR_LABELS[dir]} scores ${score.toFixed(1)}, near the bottom. It likely leaves fewer empty cells or breaks tile ordering.`;
+  if (relPos < 0.6) return `Acceptable move (score ${score.toFixed(1)}), but ${confidence}% confidence means better options exist. Consider the ${DIR_LABELS[Object.entries(allScores).sort((a,b) => b[1]-a[1])[0][0]]} direction instead.`;
+  return `Good move but not the best. Moving ${DIR_LABELS[dir]} scores ${score.toFixed(1)} with ${confidence}% confidence. Very close to optimal.`;
+}
+
 export const AIPanel: React.FC = () => {
   const { state, dispatch } = useGame();
   const { settings } = useSettings();
@@ -86,15 +138,19 @@ export const AIPanel: React.FC = () => {
     dispatch({ type: "AI_STOP" });
   };
 
-  const scores = state.analysisScores?.scores;
-  const dirLabels: Record<string, string> = { up: "⬆ Up", down: "⬇ Down", left: "⬅ Left", right: "➡ Right" };
+  // Cast once via unknown so all downstream uses are clean.
+  const scores: Record<string, number> | undefined =
+    state.analysisScores?.scores as unknown as Record<string, number> | undefined;
 
   const validScores = scores
     ? Object.entries(scores).filter(([, v]) => v > -Infinity && isFinite(v))
     : [];
   const maxScore = validScores.length ? Math.max(...validScores.map(([, v]) => v)) : 1;
-  const minScore = validScores.length ? Math.min(...validScores.map(([, v]) => v)) : 0;
-  const span = Math.max(maxScore - minScore, 1);
+
+  // Softmax-based confidence — meaningful relative probabilities.
+  const confidence = scores ? softmaxConfidence(scores) : null;
+
+  const [expandedDir, setExpandedDir] = useState<string | null>(null);
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -140,22 +196,15 @@ export const AIPanel: React.FC = () => {
         </>
       )}
 
-      {/* Analysis bar chart */}
-      {settings.aiExplain && scores && validScores.length > 0 && (
+      {/* Analysis panel */}
+      {settings.aiExplain && scores && validScores.length > 0 && confidence && (
         <div style={{ background: "var(--surface-soft)", borderRadius: 8, padding: 10, marginTop: 4, border: "1px solid var(--border)" }}>
           <button
             onClick={() => setAnalysisCollapsed(v => !v)}
             style={{
-              width: "100%",
-              textAlign: "left",
-              background: "transparent",
-              border: "none",
-              color: "var(--text)",
-              fontSize: 12,
-              fontWeight: 700,
-              marginBottom: analysisCollapsed ? 0 : 8,
-              cursor: "pointer",
-              padding: 0,
+              width: "100%", textAlign: "left", background: "transparent", border: "none",
+              color: "var(--text)", fontSize: 12, fontWeight: 700,
+              marginBottom: analysisCollapsed ? 0 : 8, cursor: "pointer", padding: 0,
             }}
           >
             🧠 AI Analysis {analysisCollapsed ? "▸" : "▾"}
@@ -163,44 +212,89 @@ export const AIPanel: React.FC = () => {
 
           {!analysisCollapsed && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-            {["up", "down", "left", "right"].map(d => {
-              const v = (scores as unknown as Record<string, number>)[d];
-              const valid = isFinite(v) && v > -Infinity;
-              const pct = valid ? Math.round(100 * (v - minScore) / span) : 0;
-              const isBest = valid && v === maxScore;
-              return (
-                <div key={d} style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: isBest ? "#f59563" : "#8f7a66" }}>
-                    {dirLabels[d]}
-                  </div>
-                  <div style={{ background: "#ddd", borderRadius: 3, height: 6, margin: "4px 0" }}>
-                    <div style={{
-                      width: `${pct}%`, height: 6, borderRadius: 3,
-                      background: isBest ? "#f59563" : "#8f7a66",
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 10, color: "var(--muted)" }}>
-                    {valid ? v.toFixed(1) : "—"}
-                  </div>
-                </div>
-              );
-            })}
+              {/* Confidence legend */}
+              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 8, lineHeight: 1.4 }}>
+                Confidence = softmax probability across valid moves.
+                Tap a direction for an explanation.
               </div>
 
-              {/* Explain top 2 choices */}
-              <div style={{ marginTop: 10, fontSize: 12, color: "var(--text)", lineHeight: 1.4 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                {["up", "down", "left", "right"].map(d => {
+                  const v = scores[d];
+                  const isInvalid = !isFinite(v) || v <= -Infinity;
+                  const isBest = !isInvalid && v === maxScore;
+                  const conf = confidence[d] ?? 0;
+                  const isExpanded = expandedDir === d;
+
+                  return (
+                    <div key={d} style={{ textAlign: "center" }}>
+                      <button
+                        onClick={() => setExpandedDir(isExpanded ? null : d)}
+                        style={{
+                          width: "100%", background: "transparent", border: "none",
+                          cursor: "pointer", padding: "2px 0",
+                        }}
+                        title="Tap for explanation"
+                      >
+                        {/* Direction label */}
+                        <div style={{ fontSize: 11, fontWeight: 700, color: isBest ? "#f59563" : isInvalid ? "var(--muted)" : "var(--text)" }}>
+                          {DIR_ARROWS[d]} {DIR_LABELS[d]}
+                        </div>
+                        {/* Confidence bar */}
+                        <div style={{ background: "var(--border)", borderRadius: 3, height: 6, margin: "4px 0" }}>
+                          <div style={{
+                            width: isInvalid ? "0%" : `${conf}%`,
+                            height: 6, borderRadius: 3,
+                            background: isBest ? "#f59563" : isInvalid ? "transparent" : "#8f7a66",
+                            transition: "width 300ms ease",
+                          }} />
+                        </div>
+                        {/* Confidence % */}
+                        <div style={{ fontSize: 10, fontWeight: 600, color: isBest ? "#f59563" : isInvalid ? "var(--muted)" : "var(--text)" }}>
+                          {isInvalid ? "blocked" : `${conf}%`}
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Explanation card — shown below grid when a direction is tapped */}
+              {expandedDir && (() => {
+                const v = scores[expandedDir];
+                const isInvalid = !isFinite(v) || v <= -Infinity;
+                const isBest = !isInvalid && v === maxScore;
+                return (
+                  <div style={{
+                    marginTop: 8,
+                    padding: "8px 10px",
+                    background: "var(--surface)",
+                    border: `1px solid ${isBest ? "#f59563" : "var(--border)"}`,
+                    borderRadius: 6,
+                    fontSize: 11,
+                    color: "var(--text)",
+                    lineHeight: 1.5,
+                  }}>
+                    <strong>{DIR_ARROWS[expandedDir]} {DIR_LABELS[expandedDir]}</strong>
+                    {" — "}
+                    {buildExplanation(expandedDir, v, confidence[expandedDir] ?? 0, isBest, isInvalid, scores)}
+                  </div>
+                );
+              })()}
+
+              {/* Top recommendation summary */}
+              <div style={{ marginTop: 10, fontSize: 12, color: "var(--text)", lineHeight: 1.5 }}>
                 {validScores
                   .sort((a, b) => b[1] - a[1])
                   .slice(0, 2)
-                  .map(([key, value], idx) => {
-                    const confidence = Math.max(0, Math.min(100, Math.round(((value - minScore) / span) * 100)));
-                    return (
-                      <div key={key}>
-                        {idx + 1}. Prefer <strong>{dirLabels[key]}</strong> ({value.toFixed(1)}) - confidence {confidence}%
-                      </div>
-                    );
-                  })}
+                  .map(([key], idx) => (
+                    <div key={key}>
+                      {idx === 0 ? "✅" : "🔹"}{" "}
+                      <strong>{DIR_ARROWS[key]} {DIR_LABELS[key]}</strong>
+                      {" "}— {confidence[key]}% confidence
+                      {idx === 0 ? " (recommended)" : ""}
+                    </div>
+                  ))}
               </div>
             </>
           )}

@@ -1,7 +1,7 @@
-import React, { useRef, useMemo } from "react";
+import React, { useRef, useMemo, useEffect, useState } from "react";
 import "./Board.css";
 import { Tile } from "./Tile";
-import type { TileData, GameGrid, Direction } from "../../types";
+import type { TileData, GameGrid, Direction, TileSkin } from "../../types";
 import { useSwipe } from "../../hooks/useSwipe";
 import { getTileColors } from "../../utils/tileColors";
 
@@ -10,21 +10,40 @@ interface Props {
   size: number;
   onSwipe: (dir: Direction) => void;
   colorblind: boolean;
+  tileSkin?: TileSkin;
   hintGrid?: GameGrid | null;
   hintDirection?: Direction | null;
   enabled?: boolean;
 }
 
 const GAP = 8;
-const CELL_PX = 80;
+const MAX_CELL_PX = 80;
+const MIN_CELL_PX = 34;
 
 export const Board: React.FC<Props> = ({
-  tiles, size, onSwipe, colorblind, hintGrid, hintDirection, enabled = true,
+  tiles, size, onSwipe, colorblind, tileSkin = "classic", hintGrid, hintDirection, enabled = true,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   useSwipe(ref, onSwipe, enabled);
 
-  const boardPx = size * CELL_PX + (size + 1) * GAP;
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window === "undefined" ? 390 : window.innerWidth,
+  );
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const cellPx = useMemo(() => {
+    const chromeAllowance = 48;
+    const maxBoardPx = Math.max(260, Math.min(520, viewportWidth - chromeAllowance));
+    const raw = Math.floor((maxBoardPx - (size + 1) * GAP) / size);
+    return Math.max(MIN_CELL_PX, Math.min(MAX_CELL_PX, raw));
+  }, [size, viewportWidth]);
+
+  const boardPx = size * cellPx + (size + 1) * GAP;
 
   const cells = useMemo(() => {
     const arr = [];
@@ -37,7 +56,7 @@ export const Board: React.FC<Props> = ({
   const dirArrow: Record<number, string> = { 0: "↑", 1: "↓", 2: "←", 3: "→" };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%" }}>
       {/* Main board */}
       <div
         ref={ref}
@@ -51,12 +70,12 @@ export const Board: React.FC<Props> = ({
           {cells.map(({ r, c }) => (
             <div
               key={`cell-${r}-${c}`}
-              className="board-cell"
-              style={{
-                left: c * (CELL_PX + GAP) + GAP,
-                top: r * (CELL_PX + GAP) + GAP,
-                width: CELL_PX,
-                height: CELL_PX,
+                className="board-cell"
+                style={{
+                left: c * (cellPx + GAP) + GAP,
+                top: r * (cellPx + GAP) + GAP,
+                width: cellPx,
+                height: cellPx,
               }}
             />
           ))}
@@ -67,10 +86,11 @@ export const Board: React.FC<Props> = ({
               key={t.id}
               tile={{ ...t, col: t.col, row: t.row }}
               size={size}
-              cellPx={CELL_PX}
+              cellPx={cellPx}
               gap={GAP + GAP / size}
               colorblind={colorblind}
-              style={{ left: t.col * (CELL_PX + GAP) + GAP, top: t.row * (CELL_PX + GAP) + GAP }}
+              tileSkin={tileSkin}
+              style={{ left: t.col * (cellPx + GAP) + GAP, top: t.row * (cellPx + GAP) + GAP }}
             />
           ))}
 
@@ -94,34 +114,33 @@ export const Board: React.FC<Props> = ({
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>
             Ghost preview — AI suggests <strong>{["Up","Down","Left","Right"][hintDirection ?? 0]}</strong>
           </div>
-          <GhostBoard grid={hintGrid} size={size} colorblind={colorblind} />
+          <GhostBoard grid={hintGrid} size={size} colorblind={colorblind} tileSkin={tileSkin} cellPx={cellPx} />
         </div>
       )}
     </div>
   );
 };
 
-const SMALL_CELL = 48;
-const SMALL_GAP = 5;
-
-const GhostBoard: React.FC<{ grid: GameGrid; size: number; colorblind: boolean }> = ({ grid, size, colorblind }) => {
-  const boardPx = size * SMALL_CELL + (size + 1) * SMALL_GAP;
+const GhostBoard: React.FC<{ grid: GameGrid; size: number; colorblind: boolean; tileSkin: TileSkin; cellPx: number }> = ({ grid, size, colorblind, tileSkin, cellPx }) => {
+  const smallCell = Math.max(20, Math.round(cellPx * 0.56));
+  const smallGap = Math.max(3, Math.round(GAP * 0.65));
+  const boardPx = size * smallCell + (size + 1) * smallGap;
   return (
     <div className="board-container ghost-board" style={{ width: boardPx, height: boardPx }}>
       <div className="board-grid" style={{ width: boardPx, height: boardPx }}>
         {grid.map((row, r) =>
           row.map((val, c) => {
-            const [bg, fg] = getTileColors(val, colorblind);
+            const [bg, fg] = getTileColors(val, colorblind, tileSkin);
             return (
               <div key={`g-${r}-${c}`} style={{
                 position: "absolute",
-                left: c * (SMALL_CELL + SMALL_GAP) + SMALL_GAP,
-                top: r * (SMALL_CELL + SMALL_GAP) + SMALL_GAP,
-                width: SMALL_CELL, height: SMALL_CELL,
-                background: val ? bg : "rgba(238,228,218,0.35)",
-                borderRadius: 4,
+                left: c * (smallCell + smallGap) + smallGap,
+                top: r * (smallCell + smallGap) + smallGap,
+                width: smallCell, height: smallCell,
+                background: val ? bg : "var(--board-cell-bg)",
+                borderRadius: 6,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontWeight: "bold", fontSize: 14, color: fg,
+                fontWeight: 760, fontSize: Math.max(10, Math.round(smallCell * 0.3)), color: fg,
               }}>
                 {val || ""}
               </div>

@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useReducer } from "react";
+import React, { createContext, useContext, useEffect, useReducer } from "react";
 import type {
-  GameGrid, Direction, GameMode, Strategy,
+  GameGrid, Direction, GameMode, Strategy, ChallengeMode,
   UndoEntry, HintResult, AnalysisResult, TileData, WSMoveMessage,
   MoveResult,
 } from "../types";
-import { buildTiles, reconcileTiles } from "../utils/boardUtils";
+import { buildTiles, reconcileTiles, freshId } from "../utils/boardUtils";
+import { lsGet, lsSet } from "../hooks/useLocalStorage";
 
 // ── State ────────────────────────────────────────────────────────────────────
 export interface GameState {
@@ -29,14 +30,20 @@ export interface GameState {
   aiRunning: boolean;
   aiSpeed: number;                // ms between moves
   strategy: Strategy;
+  challengeMode: ChallengeMode;
+  noHintMode: boolean;
   hintUses: number;
   undosUsed: number;
 }
 
+type PersistedGameState = Omit<GameState, "tiles">;
+const GAME_STATE_KEY = "2048:game-state";
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 type Action =
-  | { type: "NEW_GAME"; grid: GameGrid; size: number; undoBudget: number; isDaily: boolean; seed: number | null; timeAttack: boolean }
+  | { type: "NEW_GAME"; grid: GameGrid; size: number; undoBudget: number; isDaily: boolean; seed: number | null; timeAttack: boolean; challengeMode: ChallengeMode }
   | { type: "MOVE_APPLIED"; result: MoveResult; direction: Direction }
+  | { type: "PATCH_NEW_TILE"; pos: [number, number]; value: number; score: number; over: boolean; won: boolean }
   | { type: "AI_MOVE"; msg: WSMoveMessage }
   | { type: "UNDO" }
   | { type: "SET_HINT"; hint: HintResult; hintGrid: GameGrid }
@@ -48,6 +55,7 @@ type Action =
   | { type: "SET_SPEED"; speed: number }
   | { type: "SET_MODE"; mode: GameMode }
   | { type: "SET_STRATEGY"; strategy: Strategy }
+  | { type: "TOGGLE_NO_HINT_MODE" }
   | { type: "ACKNOWLEDGE_WIN" }
   | { type: "TIME_ATTACK_EXPIRE" };
 
@@ -77,6 +85,8 @@ function gameReducer(state: GameState, action: Action): GameState {
         dailySeed: action.seed,
         timeAttackEnd: action.timeAttack ? Date.now() + 3 * 60 * 1000 : null,
         aiRunning: false,
+        challengeMode: action.challengeMode,
+        noHintMode: state.noHintMode,
         hintUses: state.hintUses,
       };
     }
@@ -104,6 +114,31 @@ function gameReducer(state: GameState, action: Action): GameState {
         hintGrid: null,
         moveHistory: [...state.moveHistory, action.direction],
         boardHistory: [...state.boardHistory, r.grid],
+      };
+    }
+
+    case "PATCH_NEW_TILE": {
+      // Replaces the optimistically-spawned tile with the server's real tile.
+      const newGrid = state.grid.map((row) => row.slice());
+      // Remove any tile that was added optimistically (isNew) and replace with server tile
+      const patchedTiles = state.tiles
+        .filter((t) => !t.isNew)
+        .concat([{
+          id: freshId(),
+          value: action.value,
+          row: action.pos[0],
+          col: action.pos[1],
+          isNew: true,
+          isMerged: false,
+        }]);
+      newGrid[action.pos[0]][action.pos[1]] = action.value;
+      return {
+        ...state,
+        grid: newGrid,
+        tiles: patchedTiles,
+        score: action.score,
+        over: action.over,
+        won: action.won && !state.won,
       };
     }
 
@@ -174,6 +209,9 @@ function gameReducer(state: GameState, action: Action): GameState {
     case "SET_STRATEGY":
       return { ...state, strategy: action.strategy };
 
+    case "TOGGLE_NO_HINT_MODE":
+      return { ...state, noHintMode: !state.noHintMode };
+
     case "ACKNOWLEDGE_WIN":
       return { ...state, wonAcknowledged: true };
 
@@ -210,9 +248,33 @@ const initialState: GameState = {
   aiRunning: false,
   aiSpeed: 500,
   strategy: "deep",
+  challengeMode: "classic",
+  noHintMode: false,
   hintUses: 0,
   undosUsed: 0,
 };
+
+function isValidPersistedState(saved: PersistedGameState | null): saved is PersistedGameState {
+  return !!saved
+    && Array.isArray(saved.grid)
+    && saved.grid.length > 0
+    && Array.isArray(saved.boardHistory)
+    && typeof saved.score === "number"
+    && typeof saved.size === "number";
+}
+
+function hydrateGameState(): GameState {
+  const saved = lsGet<(PersistedGameState & { noHintMode?: boolean }) | null>(GAME_STATE_KEY, null);
+  if (!isValidPersistedState(saved)) return initialState;
+  const savedChallengeMode = saved.challengeMode === "no_hint" ? "classic" : saved.challengeMode;
+  return {
+    ...initialState,
+    ...saved,
+    challengeMode: savedChallengeMode,
+    noHintMode: saved.noHintMode ?? saved.challengeMode === "no_hint",
+    tiles: buildTiles(saved.grid),
+  };
+}
 
 // ── Context ───────────────────────────────────────────────────────────────────
 interface GameCtx {
@@ -223,7 +285,14 @@ interface GameCtx {
 const Ctx = createContext<GameCtx>({ state: initialState, dispatch: () => {} });
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(gameReducer, initialState);
+  const [state, dispatch] = useReducer(gameReducer, initialState, hydrateGameState);
+
+  useEffect(() => {
+    const { tiles, ...persisted } = state;
+    void tiles;
+    lsSet<PersistedGameState>(GAME_STATE_KEY, persisted);
+  }, [state]);
+
   return <Ctx.Provider value={{ state, dispatch }}>{children}</Ctx.Provider>;
 }
 

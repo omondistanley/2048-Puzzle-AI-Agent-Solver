@@ -6,12 +6,17 @@ set -euo pipefail
 #   scripts/deploy_system.sh
 #   RENDER_DEPLOY_HOOK_URL="https://api.render.com/deploy/srv-..." scripts/deploy_system.sh
 #   APP_PORT=8001 IMAGE_TAG=2048-ai-solver:prod scripts/deploy_system.sh
+#   PROD_URL="https://two048-b1yc.onrender.com" scripts/deploy_system.sh
+#   RENDER_DEPLOY_HOOK_URL="https://..." PROD_URL="https://two048-b1yc.onrender.com" scripts/deploy_system.sh
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_PORT_WAS_SET="${APP_PORT+x}"
 APP_PORT="${APP_PORT:-8000}"
 IMAGE_TAG="${IMAGE_TAG:-2048-ai-solver:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-2048-ai-solver-local}"
+PROD_URL="${PROD_URL:-}"
+PROD_POLL_TIMEOUT_SEC="${PROD_POLL_TIMEOUT_SEC:-240}"
+PROD_POLL_INTERVAL_SEC="${PROD_POLL_INTERVAL_SEC:-5}"
 
 is_port_in_use() {
   local port="$1"
@@ -100,6 +105,30 @@ if [[ -n "${RENDER_DEPLOY_HOOK_URL:-}" ]]; then
 else
   echo "RENDER_DEPLOY_HOOK_URL is not set. Skipping remote trigger."
   echo "Set it from Render Dashboard -> Service -> Settings -> Deploy Hook."
+fi
+
+if [[ -n "$PROD_URL" ]]; then
+  PROD_HEALTH_URL="${PROD_URL%/}/api/health"
+  echo "Polling production health at: $PROD_HEALTH_URL"
+  echo "Timeout: ${PROD_POLL_TIMEOUT_SEC}s | Interval: ${PROD_POLL_INTERVAL_SEC}s"
+
+  start_ts="$(date +%s)"
+  while true; do
+    if curl -fsS "$PROD_HEALTH_URL" >/dev/null 2>&1; then
+      echo "Production is healthy: $PROD_HEALTH_URL"
+      break
+    fi
+
+    now_ts="$(date +%s)"
+    elapsed="$((now_ts - start_ts))"
+    if (( elapsed >= PROD_POLL_TIMEOUT_SEC )); then
+      echo "ERROR: Timed out waiting for production health at $PROD_HEALTH_URL"
+      echo "Try checking Render logs and retry with larger timeout: PROD_POLL_TIMEOUT_SEC=420"
+      exit 1
+    fi
+
+    sleep "$PROD_POLL_INTERVAL_SEC"
+  done
 fi
 
 echo "Done."

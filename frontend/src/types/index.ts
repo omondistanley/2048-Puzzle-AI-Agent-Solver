@@ -3,6 +3,9 @@ export type Direction = 0 | 1 | 2 | 3; // 0=UP 1=DOWN 2=LEFT 3=RIGHT
 export type GameMode = "human" | "ai_watch" | "ai_assist";
 export type Strategy = "deep" | "greedy";
 export type EngineMode = "server" | "local";
+export type ChallengeMode = "classic" | "puzzle" | "speed_run" | "no_hint";
+export type BoardTheme = "violet" | "midnight" | "sunrise";
+export type TileSkin = "classic" | "glass" | "neon";
 
 export interface DiagnosticEvent {
   id: string;
@@ -103,6 +106,8 @@ export interface Settings {
   undoBudget: number;
   defaultSize: number;
   wasd: boolean;
+  boardTheme: BoardTheme;
+  tileSkin: TileSkin;
 }
 
 export interface WSMoveMessage {

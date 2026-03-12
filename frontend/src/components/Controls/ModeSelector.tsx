@@ -2,32 +2,25 @@ import React from "react";
 import type { GameMode } from "../../types";
 import { useGame } from "../../context/GameContext";
 
-const MODES: { id: GameMode; label: string }[] = [
-  { id: "human",     label: "🎮 Human" },
-  { id: "ai_watch",  label: "👁 AI Watch" },
-  { id: "ai_assist", label: "🤝 AI Assist" },
+const MODES: { id: GameMode; label: string; icon: string }[] = [
+  { id: "human",     label: "Human", icon: "person" },
+  { id: "ai_watch",  label: "AI Watch", icon: "visibility" },
+  { id: "ai_assist", label: "Assist", icon: "handshake" },
 ];
 
-export const ModeSelector: React.FC = () => {
+export const ModeSelector: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { state, dispatch } = useGame();
 
   return (
-    <div style={{ display: "flex", gap: 4, marginBottom: 12, justifyContent: "center" }}>
-      {MODES.map(({ id, label }) => (
+    <div className={`mode-selector${compact ? " compact" : ""}`}>
+      {MODES.map(({ id, label, icon }) => (
         <button
           key={id}
           onClick={() => dispatch({ type: "SET_MODE", mode: id })}
-          style={{
-            padding: "7px 14px",
-            borderRadius: 6,
-            border: "none",
-            fontWeight: 600,
-            fontSize: 13,
-            cursor: "pointer",
-            background: state.mode === id ? "#f59563" : "#eee4da",
-            color: state.mode === id ? "#fff" : "#776e65",
-          }}
+          className={`mode-button${state.mode === id ? " active" : ""}`}
+          title={label}
         >
+          <span className="material-symbols-outlined mode-icon" aria-hidden="true">{icon}</span>
           {label}
         </button>
       ))}

@@ -7,9 +7,10 @@ interface Props {
   onDailyGame: () => void;
   onOpenSidebar: () => void;
   bestScore: number;
+  dailyStreak: number;
 }
 
-export const Header: React.FC<Props> = ({ onNewGame, onDailyGame, onOpenSidebar, bestScore }) => {
+export const Header: React.FC<Props> = ({ onNewGame, onOpenSidebar, bestScore, dailyStreak }) => {
   const { state } = useGame();
 
   return (
@@ -21,6 +22,16 @@ export const Header: React.FC<Props> = ({ onNewGame, onDailyGame, onOpenSidebar,
       <div style={{ fontSize: 40, fontWeight: 900, color: "var(--text)", lineHeight: 1 }}>
         2048
         <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 500, marginLeft: 8 }}>AI Solver</span>
+        {dailyStreak > 0 && (
+          <span style={{
+            fontSize: 12, fontWeight: 700, marginLeft: 10,
+            background: "linear-gradient(135deg,#ff9f43,#ff6b00)",
+            color: "#fff", borderRadius: 20, padding: "2px 8px",
+            verticalAlign: "middle",
+          }}>
+            🔥 {dailyStreak}
+          </span>
+        )}
       </div>
 
       {/* Scores */}
@@ -30,25 +41,10 @@ export const Header: React.FC<Props> = ({ onNewGame, onDailyGame, onOpenSidebar,
       </div>
 
       {/* Buttons */}
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button onClick={onNewGame} style={btnStyle("#8f7a66")}>New Game</button>
-        <button onClick={onDailyGame} style={btnStyle("#f59563")}>📅 Daily</button>
-        <button onClick={onOpenSidebar} style={btnStyle("#bbada0")} aria-label="Open menu">☰</button>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button className="btn btn-primary" onClick={onNewGame}>New Game</button>
+        <button className="btn btn-menu" onClick={onOpenSidebar} aria-label="Open menu">☰</button>
       </div>
     </div>
   );
 };
-
-function btnStyle(bg: string): React.CSSProperties {
-  return {
-    background: bg,
-    color: "#f9f6f2",
-    border: "none",
-    borderRadius: 6,
-    padding: "8px 14px",
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: "pointer",
-    boxShadow: "0 1px 0 rgba(0,0,0,0.18)",
-  };
-}

@@ -8,10 +8,17 @@ interface Props {
 export const ScoreBox: React.FC<Props> = ({ label, score }) => {
   const prev = useRef(score);
   const [bump, setBump] = useState(false);
+  const [delta, setDelta] = useState<number | null>(null);
+  const [deltaKey, setDeltaKey] = useState(0);
 
   useEffect(() => {
     if (score !== prev.current) {
+      const diff = score - prev.current;
       prev.current = score;
+      if (diff > 0) {
+        setDelta(diff);
+        setDeltaKey(k => k + 1);
+      }
       setBump(true);
       const t = setTimeout(() => setBump(false), 300);
       return () => clearTimeout(t);
@@ -26,11 +33,15 @@ export const ScoreBox: React.FC<Props> = ({ label, score }) => {
       padding: "6px 14px",
       textAlign: "center",
       minWidth: 80,
-      transition: bump ? "transform 0.15s" : undefined,
+      position: "relative",
+      transition: "transform 0.15s",
       transform: bump ? "scale(1.12)" : "scale(1)",
     }}>
       <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, letterSpacing: 1 }}>{label}</div>
       <div style={{ fontSize: 22, color: "var(--text)", fontWeight: 800 }}>{score}</div>
+      {delta !== null && (
+        <span key={deltaKey} className="score-delta">+{delta}</span>
+      )}
     </div>
   );
 };

@@ -14,6 +14,8 @@ const defaultSettings: Settings = {
   undoBudget: 3,
   defaultSize: 4,
   wasd: true,
+  boardTheme: "violet",
+  tileSkin: "classic",
 };
 
 interface SettingsCtx {
@@ -24,9 +26,10 @@ interface SettingsCtx {
 const Ctx = createContext<SettingsCtx>({ settings: defaultSettings, update: () => {} });
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<Settings>(() =>
-    lsGet<Settings>(SETTINGS_KEY, defaultSettings)
-  );
+  const [settings, setSettings] = useState<Settings>(() => {
+    const saved = lsGet<Partial<Settings>>(SETTINGS_KEY, {});
+    return { ...defaultSettings, ...saved };
+  });
 
   const update = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {

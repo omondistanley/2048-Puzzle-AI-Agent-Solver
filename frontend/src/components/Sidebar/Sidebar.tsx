@@ -8,6 +8,7 @@ import type { PlayerStats, ReplayRecord } from "../../types";
 interface Props {
   open: boolean;
   onClose: () => void;
+  onDailyGame: () => void;
   stats: PlayerStats;
   bestScore: number;
   unlocked: Set<string>;
@@ -17,47 +18,66 @@ interface Props {
 }
 
 export const Sidebar: React.FC<Props> = ({
-  open, onClose, stats, bestScore, unlocked, replays, colorblind, dailyStreak,
+  open, onClose, onDailyGame, stats, bestScore, unlocked, replays, colorblind, dailyStreak,
 }) => {
-  if (!open) return null;
+  const hr = () => (
+    <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "0 0 24px" }} />
+  );
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — always mounted, animated via class */}
       <div
+        className={`sidebar-backdrop${open ? " open" : ""}`}
         onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100,
-        }}
       />
 
-      {/* Drawer */}
-      <div style={{
-        position: "fixed", top: 0, right: 0, width: 320, maxWidth: "100vw",
-        height: "100vh", background: "var(--surface)", color: "var(--text)", zIndex: 101, overflowY: "auto",
-        padding: 20, boxSizing: "border-box",
-        boxShadow: "-4px 0 20px rgba(0,0,0,0.2)",
-      }}>
+      {/* Drawer — always mounted, slides in/out */}
+      <div className={`sidebar-drawer${open ? " open" : ""}`}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <h2 style={{ margin: 0, color: "var(--text)" }}>🧩 2048 Menu</h2>
-          <button onClick={onClose} style={{
-            background: "none", border: "none", fontSize: 22,
-            cursor: "pointer", color: "var(--text)",
-          }}>✕</button>
+          <button
+            onClick={onClose}
+            className="btn btn-ghost"
+            style={{ minHeight: 36, fontSize: 20, padding: "0 8px" }}
+            aria-label="Close menu"
+          >✕</button>
         </div>
 
-        {dailyStreak > 0 && (
-          <div style={{ background: "var(--surface-soft)", borderRadius: 8, padding: "8px 12px", marginBottom: 16, fontSize: 13, border: "1px solid var(--border)" }}>
-            🔥 Daily streak: <strong>{dailyStreak}</strong> day{dailyStreak !== 1 ? "s" : ""}
-          </div>
-        )}
+        {/* Daily Challenge entry + streak badge */}
+        <button
+          onClick={() => { onDailyGame(); onClose(); }}
+          style={{
+            width: "100%",
+            background: dailyStreak > 0
+              ? "linear-gradient(135deg, #ff9f43 0%, #ff6b00 100%)"
+              : "var(--surface-soft)",
+            border: dailyStreak > 0 ? "1px solid rgba(255,246,201,0.6)" : "1px solid var(--border)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            color: dailyStreak > 0 ? "#fff" : "var(--text)",
+            fontWeight: 700,
+            fontSize: 14,
+            boxShadow: dailyStreak > 0 ? "0 0 12px rgba(255,140,0,0.4)" : "none",
+          }}
+        >
+          <span>📅 Daily Challenge</span>
+          {dailyStreak > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 800 }}>🔥 {dailyStreak}-day streak</span>
+          )}
+        </button>
 
         <section style={{ marginBottom: 24 }}><StatsPanel stats={stats} bestScore={bestScore} /></section>
-        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "0 0 24px" }} />
+        {hr()}
         <section style={{ marginBottom: 24 }}><AchievementsPanel unlocked={unlocked} /></section>
-        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "0 0 24px" }} />
+        {hr()}
         <section style={{ marginBottom: 24 }}><ReplayPanel replays={replays} colorblind={colorblind} /></section>
-        <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "0 0 24px" }} />
+        {hr()}
         <section><SettingsPanel /></section>
       </div>
     </>
