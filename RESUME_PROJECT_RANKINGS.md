@@ -148,65 +148,94 @@ iOS native modules (Swift):
 
 ### 2. user-microservice
 **Repository:** `omondistanley/user-microservice`
-**Languages:** Python
-**Status:** In-progress production app targeting pocketii.com
+**Languages:** Python (FastAPI), JavaScript (frontend)
+**Status:** In-progress production fintech app targeting pocketii.com
 
 #### What It Does
-Despite the name, this is a full-featured **Expense Tracker** product — "Pocketii" — built as a microservices system. It tracks expenses, budgets, goals, recurring transactions, bank connections (via Plaid/TrueLayer), and syncs with Apple Wallet. The 8-phase sprint documentation reveals a thoroughly planned project lifecycle.
+This is a **full-stack fintech product** — "Pocketii" — far larger than its repository name implies. It is a 5-microservice backend + full Jinja2 HTML frontend (40+ templates, PWA service worker) that functions as a comprehensive personal finance platform: expense tracking, budgeting, investment portfolio management, bank account linking, receipt OCR, tax-loss harvesting, and AI-driven investment explanations.
 
-#### Architecture
+#### Full Architecture
 ```
-┌─────────────────────────────────────────────────────────┐
-│  API Gateway  (FastAPI, auth middleware, rate limiting,  │
-│               JWT verification, service routing)         │
-├─────────────────────────────────────────────────────────┤
-│  user-microservice   expense-microservice                │
-│  budget-microservice notification-microservice           │
-├─────────────────────────────────────────────────────────┤
-│  PostgreSQL (multi-DB)  ← docker/postgres/init/          │
-│  Event bus (subscriber pattern)                         │
-│  Plaid / TrueLayer adapters                             │
-│  Apple Wallet webhook                                   │
-│  Google OAuth + Apple Sign-In                           │
-└─────────────────────────────────────────────────────────┘
-Docker Compose (18KB) orchestrates all services
+┌────────────────────────────────────────────────────────────────┐
+│  Frontend (Jinja2 HTML + JS + CSS, 40+ templates, PWA)         │
+│  Screens: dashboard, expenses, budgets, income, investments,   │
+│           goals, recommendations, reports, net_worth, etc.     │
+└────────────────────────────────────────────────────────────────┘
+                           ↓
+┌────────────────────────────────────────────────────────────────┐
+│  API Gateway  (FastAPI: CORS, rate limiting, JWT, routing,     │
+│               security headers, proxy to microservices)        │
+├────────────────────────────────────────────────────────────────┤
+│  user-microservice                                             │
+│    auth, OAuth (Google/Apple), sessions, households, settings  │
+│    migrations/001_schema.sql                                   │
+├────────────────────────────────────────────────────────────────┤
+│  expense-microservice  (15 SQL migrations)                     │
+│    expenses, categories, receipts (OCR), goals, income,        │
+│    recurring, insights, net_worth, tags, saved_views           │
+│    Bank connectors: Plaid, Teller, TrueLayer adapters          │
+│    Apple Wallet webhook, export/import, expense import         │
+│    receipt_storage, receipt_ocr service                        │
+├────────────────────────────────────────────────────────────────┤
+│  budget-microservice  (3 SQL migrations)                       │
+│    budgets, budget alert processor, scheduler, household scope │
+├────────────────────────────────────────────────────────────────┤
+│  investments-microservice  (11 SQL migrations)                 │
+│    Holdings, portfolio snapshots, risk profile, market data    │
+│    Market data adapters: Alpaca, AlphaVantage, Finnhub,        │
+│      Benzinga, Twelvedata, TwelveData, free_adapter            │
+│    Services: AI explainer, tax harvesting scanner,             │
+│      scenario library, stress test, correlation,              │
+│      sector exposure, analyst universe, ETF composition,       │
+│      look-through, fundamental data, quality score,            │
+│      daily returns backfill, sentiment, recommendations        │
+│    Routes: holdings, portfolio, market, news, risk_profile,    │
+│      recommendations, tax, sentiment                           │
+├────────────────────────────────────────────────────────────────┤
+│  PostgreSQL (multi-DB init, per-service databases)             │
+│  Event bus (subscriber pattern in budget service)              │
+└────────────────────────────────────────────────────────────────┘
+Docker Compose (18KB) orchestrates all 5 services + DB
+8-phase sprint docs (phase1_runbook.txt → phase8_sprint_board.txt)
+e2e test: tests_e2e/test_end_to_end.py
 ```
 
-#### Key Technical Details
-- **Budget microservice** has: budget alert processor, scheduler, household scope migrations, internal + public routers, service factory pattern
-- **Expense microservice** has: bank connector adapters (Plaid, TrueLayer), exchange rate sync job, recurring due processor, receipt handling, goals, income, categories
-- **API Gateway** has: auth middleware, rate limiting, service proxy, JWT verification
-- **3 SQL migration files** showing iterative schema evolution
-- **Sprint docs** (phase1_runbook.txt through phase8_sprint_board.txt) — rare and impressive evidence of structured development
+#### Scale of the Codebase
+- **expense-microservice**: 15 SQL migrations, 15+ routers, 15+ services, 7 test files
+- **investments-microservice**: 11 SQL migrations, 9 routers, **35 service files**, 6 test files
+- **frontend**: 40+ Jinja2 HTML templates + JS modules for every feature, PWA manifest + service worker
+- **Total bank integrations**: Plaid, Teller, TrueLayer — three separate adapter patterns
 
 #### Strengths
-- Full microservices pattern with API gateway as single entry point
-- Real bank integrations (Plaid, TrueLayer) — demonstrates third-party API integration at production level
-- Event-driven architecture (subscriber pattern)
-- Thorough data modeling: budgets, expenses, goals, income, receipts, recurring transactions
-- Sprint documentation shows professional development process
+- One of the most comprehensive fintech platforms in a portfolio project context
+- investments-microservice rivals production fintech backends: AI explainer, tax-loss harvesting, stress testing, scenario library, analyst universe, ETF look-through
+- Three bank connectors (Plaid + Teller + TrueLayer) show real third-party API breadth
+- Receipt OCR pipeline
+- Full frontend with PWA (service worker, manifest) — not just a backend project
+- Sprint documentation (8 phases) demonstrates professional project management
+- Per-service SQL migration files showing iterative schema evolution
 
 #### Gaps & Required Improvements
 
 **Critical gaps:**
-1. **Tests are minimal** — Only `tests/test_budget_alert_processor.py` is visible. Each microservice needs its own test suite.
-2. **No README for individual services** — The root README is just 2 lines. Need per-service READMEs explaining the responsibility of each service.
-3. **No OpenAPI/Swagger for services** — FastAPI generates this automatically; add custom descriptions and document the inter-service communication contracts.
-4. **No deployment docs** — There's `docs/DEPLOYMENT_POCKETII.md` but unclear if it's complete. Need a clear "how to deploy from scratch" guide.
-5. **Environment variable management** — Multiple `.env.example` files exist per service; consolidate with a root `.env.example`.
+1. **Root README is 2 lines** — The most severe problem for a project this large. Write a comprehensive README with: architecture diagram, service map, feature list, local setup guide, deployment guide.
+2. **Tests exist but scattered** — budget has 1 test, expense has 7, investments has 6. Add a root `pytest.ini` that discovers all services' tests together. Add `tests_e2e/` coverage.
+3. **No OpenAPI documentation** — With this many endpoints, self-documented Swagger is critical. Add descriptions, tags, and response models to every FastAPI router.
+4. **No architecture diagram** — This project is too complex to understand without one. Create and commit a diagram showing all 5 services, their databases, and external integrations.
+5. **investments-microservice completely undocumented** — The most impressive service has zero README. Write one highlighting the 35 services, market data adapters, and AI features.
 
 **Architecture gaps:**
-- No service discovery pattern documented
-- No circuit breaker pattern (important for Plaid/bank failures)
-- No async messaging system documented (Celery? Redis queues?)
+- No circuit breaker for the 3 bank adapters (Plaid/Teller/TrueLayer outages)
+- No async task queue documented (background jobs like `daily_returns_backfill` need a scheduler)
+- No caching layer documented for market data (AlphaVantage/Finnhub have rate limits)
 
 **Documentation improvements:**
-- Architecture diagram showing all 4 microservices + gateway
-- Data model ERD per service
-- API contract between services (protobuf? JSON schema?)
+- Add per-service READMEs (minimum: what it owns, its API surface, its DB schema)
+- Data model ERD for investments and expense services
+- Environment variable master table (all `.env.example` files consolidated)
 
 **Resume framing:**
-> "Engineered a fintech expense tracker (Pocketii) as a 5-service microservices system: custom API gateway with JWT auth and rate limiting, bank sync via Plaid/TrueLayer adapters, event-driven budget alerts, Apple Wallet integration, and Google/Apple OAuth. 8-phase sprint execution with Docker Compose orchestration."
+> "Engineered Pocketii, a full-stack fintech platform: 5 FastAPI microservices (expense/budget/investments/user + API gateway); investments service with 35 modules spanning AI-driven explainer, tax-loss harvesting, stress testing, scenario analysis, and 5 market data adapters (Alpaca, AlphaVantage, Finnhub, Benzinga, Twelvedata); 3 bank connectors (Plaid, Teller, TrueLayer); receipt OCR; full Jinja2/PWA frontend; 29+ SQL migrations; 8-phase sprint delivery."
 
 ---
 
@@ -738,7 +767,7 @@ Four AI programming assignments from Columbia's Artificial Intelligence course:
 
 ### Immediate (do before any job application):
 1. **MistralMoE** — Fix `Mixtral Final Papaer.pdf` → `Mixtral Final Paper.pdf` typo
-2. **2048-Puzzle-AI-Agent-Solver** — Remove `__pycache__` and `output*.txt` from git, add live URL
+2. **2048-Puzzle-AI-Agent-Solver** — Remove `__pycache__`, `output*.txt`, and `frontend/package-lock 2.json` from git, add live URL
 3. **HTTP-server** — Remove all binaries and `.o` files from git tracking
 4. **citv** — Fix repo description on GitHub (currently null), reduce repo size by gitignoring output artifacts
 5. **All projects** — Add GitHub repo descriptions (many are null)
@@ -762,7 +791,7 @@ Four AI programming assignments from Columbia's Artificial Intelligence course:
 | Project | README | Architecture Diagram | API Docs | Tests | Deploy Docs | Score |
 |---------|--------|---------------------|----------|-------|-------------|-------|
 | roam-mvp | ✅ | ❌ | ❌ | ✅ API+e2e | Partial | 3/5 |
-| user-microservice | ❌ minimal | ❌ | ❌ | Minimal | ✅ | 1/5 |
+| user-microservice | ❌ 2 lines | ❌ | ❌ | Partial (20+ tests) | ✅ | 2/5 |
 | MistralMoE | ✅ | ❌ | N/A | N/A | N/A | 3/5 |
 | 2048-Puzzle | ✅ | Partial | ❌ | Partial | ✅ | 3/5 |
 | citv | ✅ + 5 docs | ❌ | N/A | ❌ | ❌ | 3/5 |
