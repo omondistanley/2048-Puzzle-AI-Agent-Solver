@@ -101,26 +101,32 @@ iOS native modules (Swift):
 
 #### File Structure Highlights
 - `apps/api/` — FastAPI backend with Alembic, async SQLAlchemy, Groq integration
+  - `apps/api/tests/` — pytest test suite: `conftest.py`, `test_ideas_e2e.py`, `test_join_e2e.py`, `test_notifications_e2e.py`, `test_scheduling_e2e.py`, `test_users_e2e.py` + `.coverage` file (tests have run)
 - `apps/mobile/` — Expo Router v3, tab navigation, Firebase auth
 - `apps/web/` — Vite 5 + Tailwind, Cloudflare Pages deploy
-- `packages/types/` — shared TypeScript interfaces
+  - `apps/web/e2e/` — Playwright e2e tests: `app-flow.spec.ts`, `join.spec.ts`, `manage-event.spec.ts`
+- `packages/types/` — shared TypeScript interfaces (idea, notification, schedule, user)
 - `ios/` — 4 Swift native modules
-- `.github/workflows/` — full CI/CD per service
+- `.github/workflows/` — full CI/CD per service (api.yml, mobile.yml, web.yml)
 - `turbo.json` — Turborepo monorepo pipeline
 
 #### Strengths
 - Monorepo with Turborepo (demonstrates modern project structure thinking)
 - End-to-end production deployment with real CI/CD
+- **Has tests:** pytest e2e suite for API (ideas, join, scheduling, notifications, users) + Playwright e2e for web
 - Two-stage LLM pipeline with graceful degradation (saves with `ai_enriched=false`, retries)
 - Native iOS security (Keychain, not AsyncStorage)
 - Google Calendar integration for intelligent scheduling
 - Auth bypass for local dev (`AUTH_ENABLED=false`)
 - 401 retry with token deduplication
+- 4-stage AI pipeline: parse → classify → command → vision (llama-3.3-70b + llama-4-scout)
+- Reel ingestion via yt-dlp + Groq vision (ingest social video content as plan ideas)
+- 5 Alembic migration files showing iterative schema evolution
 
 #### Gaps & Required Improvements
 
 **Critical gaps:**
-1. **No tests** — The `apps/api/` appears to have no unit or integration tests. Add `pytest` with `httpx` for async endpoint tests.
+1. **Tests exist but coverage is unknown** — `.coverage` file is present but coverage % isn't documented in README. Run `pytest --cov` and add a coverage badge.
 2. **No error monitoring** — Add Sentry for both API and mobile crash reporting.
 3. **Missing API docs** — FastAPI auto-generates `/docs` but there's no mention of custom OpenAPI descriptions or tags per endpoint.
 4. **No rate limiting on AI endpoints** — The Groq LLM pipeline could be abused. Add per-user rate limiting.
@@ -136,7 +142,7 @@ iOS native modules (Swift):
 - Document the Cloudflare Pages custom domain setup
 
 **Resume framing:**
-> "Built a production social planning app: React Native + FastAPI monorepo (Turborepo), two-stage LLM enrichment pipeline (Groq) with graceful degradation, Google Calendar scheduling intelligence, 4 iOS native Swift modules, and automated CI/CD to Google Cloud Run / Cloudflare Pages / EAS Build."
+> "Built Roam, a production social planning app: Turborepo monorepo (Expo React Native + FastAPI + Cloudflare Pages); 4-stage Groq LLM pipeline (parse/classify/command/vision: llama-3.3-70b + llama-4-scout-17b) with graceful degradation; yt-dlp social reel ingestion; Google Calendar scheduling intelligence; 4 iOS Swift native modules (Keychain, Apple Sign-In, WidgetKit, Share Extension); pytest e2e + Playwright e2e test suites; CI/CD to GCR / EAS Build / Cloudflare Pages."
 
 ---
 
@@ -755,7 +761,7 @@ Four AI programming assignments from Columbia's Artificial Intelligence course:
 
 | Project | README | Architecture Diagram | API Docs | Tests | Deploy Docs | Score |
 |---------|--------|---------------------|----------|-------|-------------|-------|
-| roam-mvp | ✅ | ❌ | ❌ | ❌ | Partial | 2/5 |
+| roam-mvp | ✅ | ❌ | ❌ | ✅ API+e2e | Partial | 3/5 |
 | user-microservice | ❌ minimal | ❌ | ❌ | Minimal | ✅ | 1/5 |
 | MistralMoE | ✅ | ❌ | N/A | N/A | N/A | 3/5 |
 | 2048-Puzzle | ✅ | Partial | ❌ | Partial | ✅ | 3/5 |
